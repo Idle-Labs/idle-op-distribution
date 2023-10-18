@@ -79,11 +79,6 @@ async function getVaultTotalSupplyBlocks(vaultData, blocks) {
   }, {})
 }
 
-async function getVaultFee(vaultData) {
-  const fee = await vaultData.cdoContract.methods[vaultData.functions.fee]().call();
-  return BNify(fee).div(1e05);
-}
-
 async function getBlocksTimestamps(blocks){
   const promises = blocks.map( blockNumber => web3.eth.getBlock(blockNumber).then( blockInfo => ({blockNumber, timestamp: blockInfo.timestamp}) ) )
   const results = await Promise.all(promises);
@@ -117,11 +112,9 @@ async function getTokenBalances(vaultData, startBlock, endBlock) {
 
   // Get vault prices at specific blocks
   const [
-    vaultFee,
     blocksTimestamps,
     vaultSupplies,
   ] = await Promise.all([
-    getVaultFee(vaultData),
     getBlocksTimestamps(eventsBlocks),
     getVaultTotalSupplyBlocks(vaultData, eventsBlocks)
   ]);
