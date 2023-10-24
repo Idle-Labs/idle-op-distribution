@@ -12,56 +12,73 @@ require('dotenv').config()
 // const blocksTimestamps = require('./blocksTimestamps.json');
 
 const web3 = new Web3(new Web3.providers.HttpProvider(`https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`));
+// const web3 = new Web3(new Web3.providers.HttpProvider(`https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_MAINNET_KEY}`));
+// const web3 = new Web3(new Web3.providers.HttpProvider(`https://mainnet.infura.io/v3/${process.env.INFURA_MAINNET_KEY}`));
 const multiCall = new Multicall(web3);
 
 const debugLog = false;
+const blocksTimestamps = {}
 
 const vaults = {
+  /*
+  AA_lido_stETH:{
+    type: 'AA',
+    token:'stETH',
+    decimals: 18,
+    abi: erc20ABI,
+    address:'0x2688fc68c4eac90d9e5e1b94776cf14eade8d877',
+    cdoAddress: '0x34dcd573c5de4672c8248cd12a99f875ca112ad8',
+    cdoContract: new web3.eth.Contract(idleCDOAbi, '0x34dcd573c5de4672c8248cd12a99f875ca112ad8'),
+    trancheContract: new web3.eth.Contract(erc20ABI, '0x2688fc68c4eac90d9e5e1b94776cf14eade8d877')
+  },
+  BB_lido_stETH:{
+    type: 'BB',
+    token:'stETH',
+    decimals: 18,
+    abi: erc20ABI,
+    address:'0x3a52fa30c33caf05faee0f9c5dfe5fd5fe8b3978',
+    cdoAddress: '0x34dcd573c5de4672c8248cd12a99f875ca112ad8',
+    cdoContract: new web3.eth.Contract(idleCDOAbi, '0x34dcd573c5de4672c8248cd12a99f875ca112ad8'),
+    trancheContract: new web3.eth.Contract(erc20ABI, '0x3a52fa30c33caf05faee0f9c5dfe5fd5fe8b3978')
+  },
+  */
   AA_clearpool_portofino_USDC:{
-    functions:{
-      fee:'fee',
-      price:'virtualPrice'
-    },
+    type: 'AA',
     token:'USDC',
     decimals: 18,
     abi: erc20ABI,
     address:'0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482',
+    cdoAddress: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
     cdoContract: new web3.eth.Contract(idleCDOAbi, '0x957572d61DD16662471c744837d4905bC04Bbaeb'),
     trancheContract: new web3.eth.Contract(erc20ABI, '0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482')
   },
   BB_clearpool_portofino_USDC:{
-    functions:{
-      fee:'fee',
-      price:'virtualPrice'
-    },
+    type: 'BB',
     token:'USDC',
     decimals: 18,
     abi: erc20ABI,
     address:'0x56A4283a4CE7202672A1518340732d5ffC511c0b',
+    cdoAddress: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
     cdoContract: new web3.eth.Contract(idleCDOAbi, '0x957572d61DD16662471c744837d4905bC04Bbaeb'),
     trancheContract: new web3.eth.Contract(erc20ABI, '0x56A4283a4CE7202672A1518340732d5ffC511c0b')
   },
   AA_clearpool_fasanara_USDT:{
-    functions:{
-      fee:'fee',
-      price:'virtualPrice'
-    },
+    type: 'AA',
     token:'USDT',
     decimals: 18,
     abi: erc20ABI,
     address:'0x50BA0c3f940f0e851f8e30f95d2A839216EC5eC9',
+    cdoAddress: '0x94e399Af25b676e7783fDcd62854221e67566b7f',
     cdoContract: new web3.eth.Contract(idleCDOAbi, '0x94e399Af25b676e7783fDcd62854221e67566b7f'),
     trancheContract: new web3.eth.Contract(erc20ABI, '0x50BA0c3f940f0e851f8e30f95d2A839216EC5eC9')
   },
   BB_clearpool_fasanara_USDT:{
-    functions:{
-      fee:'fee',
-      price:'virtualPrice'
-    },
+    type: 'BB',
     token:'USDT',
     decimals: 18,
     abi: erc20ABI,
     address:'0x7038D2A5323064f7e590EADc0E8833F2613F6317',
+    cdoAddress: '0x94e399Af25b676e7783fDcd62854221e67566b7f',
     cdoContract: new web3.eth.Contract(idleCDOAbi, '0x94e399Af25b676e7783fDcd62854221e67566b7f'),
     trancheContract: new web3.eth.Contract(erc20ABI, '0x7038D2A5323064f7e590EADc0E8833F2613F6317')
   },
@@ -79,6 +96,18 @@ async function getVaultTotalSupplyBlocks(vaultData, blocks) {
   }, {})
 }
 
+async function getVaultSplitRatioBlocks(vaultData, blocks) {
+  const promises = blocks.map( blockNumber => vaultData.cdoContract.methods['trancheAPRSplitRatio']().call({}, parseInt(blockNumber)).then( trancheAPRSplitRatio => ({blockNumber, trancheAPRSplitRatio}) ) )
+  const results = await Promise.all(promises);
+  return results.reduce( (splitRatios, result) => {
+    splitRatios[result.blockNumber] = BNify(result.trancheAPRSplitRatio)
+    if (debugLog){
+      console.log(`"${result.blockNumber}": ${BNify(result.trancheAPRSplitRatio).toString()},`);
+    }
+    return splitRatios
+  }, {})
+}
+
 async function getBlocksTimestamps(blocks){
   const promises = blocks.map( blockNumber => web3.eth.getBlock(blockNumber).then( blockInfo => ({blockNumber, timestamp: blockInfo.timestamp}) ) )
   const results = await Promise.all(promises);
@@ -89,11 +118,90 @@ async function getBlocksTimestamps(blocks){
   }, {})
 }
 
+function getVaultAprRatio(tvlAARatio) {
+  const FULL_ALLOC = 100000
+  const AA_RATIO_LIM_DOWN = 50000
+  const AA_RATIO_LIM_UP = 98000
+  let minSplit = 50000;
+  minSplit = minSplit === 0 ? AA_RATIO_LIM_DOWN : minSplit;
+
+  let aux;
+  if (tvlAARatio >= AA_RATIO_LIM_UP) {
+      aux = AA_RATIO_LIM_UP;
+  } else if (tvlAARatio > minSplit) {
+      aux = tvlAARatio;
+  } else {
+      aux = minSplit;
+  }
+  return  BNify((aux * tvlAARatio) / FULL_ALLOC / FULL_ALLOC);
+}
+
+async function getAAVaultRewardsRatio(vaultData, aaTrancheContract, bbTrancheContract, startBlock, endBlock){
+  const aa_events = await aaTrancheContract.getPastEvents('Transfer', {
+    fromBlock: startBlock,
+    toBlock: endBlock
+  });
+
+  const bb_events = await bbTrancheContract.getPastEvents('Transfer', {
+    fromBlock: startBlock,
+    toBlock: endBlock
+  });
+
+  const eventsBlocks = [];
+  aa_events.forEach( event => {
+    if (eventsBlocks.indexOf(event.blockNumber) === -1){
+      eventsBlocks.push(event.blockNumber);
+    }
+  });
+  bb_events.forEach( event => {
+    if (eventsBlocks.indexOf(event.blockNumber) === -1){
+      eventsBlocks.push(event.blockNumber);
+    }
+  });
+
+  if (eventsBlocks.indexOf(startBlock) === -1){
+    eventsBlocks.push(startBlock)
+  }
+  if (eventsBlocks.indexOf(endBlock) === -1){
+    eventsBlocks.push(endBlock)
+  }
+
+  // Get vault split ratio only from startBlock to endBlock
+  const vaultSplitRatios = await getVaultSplitRatioBlocks(vaultData, eventsBlocks.filter( blockNumber => BNify(blockNumber).gte(startBlock) && BNify(blockNumber).lte(endBlock) ))
+
+  // console.log('vaultSplitRatios', vaultData.cdoAddress, eventsBlocks, vaultSplitRatios)
+
+  let avgSplitRatio = BNify(0)
+  if (Object.keys(vaultSplitRatios).length>0){
+    let prevTimestamp = null;
+    let prevSplitRatio = null;
+    const avgSplitRatioInfo = Object.keys(vaultSplitRatios).reduce( (avgSplitRatioInfo, splitRatioBlock) => {
+      const blockTimestamp = BNify(blocksTimestamps[splitRatioBlock]);
+      if (prevTimestamp){
+        const splitRatioDuration = blockTimestamp.minus(prevTimestamp);
+        avgSplitRatioInfo.num = avgSplitRatioInfo.num.plus(prevSplitRatio.times(splitRatioDuration));
+        avgSplitRatioInfo.denom = avgSplitRatioInfo.denom.plus(splitRatioDuration)
+        // console.log(vaultData.cdoAddress, momentjs(parseInt(prevTimestamp)*1000).format('DD-MM-YYYY HH:mm'), momentjs(parseInt(blockTimestamp)*1000).format('DD-MM-YYYY HH:mm'), prevSplitRatio.toString())
+      }
+      prevTimestamp = blockTimestamp;
+      prevSplitRatio = BNify(vaultSplitRatios[splitRatioBlock]);
+      return avgSplitRatioInfo;
+    }, {
+      num: BNify(0),
+      denom: BNify(0)
+    })
+
+    avgSplitRatio = avgSplitRatioInfo.num.div(avgSplitRatioInfo.denom)
+    // console.log('avgSplitRatio', avgSplitRatioInfo.num.toString(), avgSplitRatioInfo.denom.toString(), avgSplitRatio.toString());
+  }
+
+  return getVaultAprRatio(parseInt(avgSplitRatio));
+}
 
 async function getTokenBalances(vaultData, startBlock, endBlock) {
-  const tokenContract = new web3.eth.Contract(vaultData.abi, vaultData.address);
+  // const tokenContract = new web3.eth.Contract(vaultData.abi, vaultData.address);
   
-  const events = await tokenContract.getPastEvents('Transfer', {
+  const events = await vaultData.trancheContract.getPastEvents('Transfer', {
     fromBlock: 0,
     toBlock: endBlock
   });
@@ -112,14 +220,17 @@ async function getTokenBalances(vaultData, startBlock, endBlock) {
 
   // Get vault prices at specific blocks
   const [
-    blocksTimestamps,
-    vaultSupplies,
+    vaultBlocksTimestamps,
+    vaultSupplies
   ] = await Promise.all([
-    getBlocksTimestamps(eventsBlocks),
-    getVaultTotalSupplyBlocks(vaultData, eventsBlocks)
+    getBlocksTimestamps(eventsBlocks.filter( blockNumber => !blocksTimestamps[blockNumber] )),
+    getVaultTotalSupplyBlocks(vaultData, eventsBlocks),
   ]);
 
-  // return {}
+  // Add new timestamps to blocksTimestamps
+  Object.keys(vaultBlocksTimestamps).forEach( (blockNumber) => {
+    blocksTimestamps[blockNumber] = vaultBlocksTimestamps[blockNumber]
+  })
 
   const holdersMap = {};
 
@@ -403,21 +514,59 @@ async function main(){
     ['Vault', 'Token', 'Address', 'Token Balance', 'Avg Share %', 'OP'].join(',')
   ];
 
-  const totalOP = 1000;
-  const startBlock = 110450190; // Optimism
+  const totalRewardsPerVault = BNify(3125);
+  const startBlock = 110910442; // Optimism
+  // const startBlock = 18362962; // Mainnet (7 days ago)
   const endBlock = (await web3.eth.getBlock()).number // now
 
   const promises = Object.keys(vaults).map( token => getTokenBalances(vaults[token], startBlock, endBlock).then( holders => ({[token]: holders}) ) )
   const results = await Promise.all(promises);
 
+  // Group vaults by CDO
+  const vaultsByCDO = {}
+  for (var i = 0; i < results.length; i++) {
+    const token = Object.keys(results[i])[0]
+    const vaultData = vaults[token]
+    const cdoAddr = vaultData.cdoAddress.toLowerCase()
+    if (!vaultsByCDO[cdoAddr]){
+      vaultsByCDO[cdoAddr] = {
+        vaults: {
+          AA: null,
+          BB: null
+        },
+        ratios: {
+          AA: 0,
+          BB: 0
+        },
+        rewards: {
+          AA: 0,
+          BB: 0
+        }
+      }
+    }
+    vaultsByCDO[cdoAddr].vaults[vaultData.type] = vaultData;
+  }
+
+  for(cdoAddr in vaultsByCDO) {
+    const aaVaultData = vaultsByCDO[cdoAddr].vaults.AA
+    const bbVaultData = vaultsByCDO[cdoAddr].vaults.BB
+
+    vaultsByCDO[cdoAddr].ratios.AA = await getAAVaultRewardsRatio(aaVaultData, aaVaultData.trancheContract, bbVaultData.trancheContract, startBlock, endBlock)
+    vaultsByCDO[cdoAddr].ratios.BB = BNify(1).minus(vaultsByCDO[cdoAddr].ratios.AA)
+    vaultsByCDO[cdoAddr].rewards.AA = totalRewardsPerVault.times(vaultsByCDO[cdoAddr].ratios.AA)
+    vaultsByCDO[cdoAddr].rewards.BB = totalRewardsPerVault.times(vaultsByCDO[cdoAddr].ratios.BB)
+    // console.log('vaults rewards', cdoAddr, vaultsByCDO[cdoAddr].ratios.AA.toString(), vaultsByCDO[cdoAddr].ratios.BB.toString(), vaultsByCDO[cdoAddr].rewards.AA.toString(), vaultsByCDO[cdoAddr].rewards.BB.toString())
+  }
+
   for (var i = 0; i < results.length; i++) {
     const tokenBalances = results[i]
     const token = Object.keys(tokenBalances)[0]
     const vaultData = vaults[token]
+    const vaultTotalRewards = vaultsByCDO[vaultData.cdoAddress.toLowerCase()].rewards[vaultData.type]
     Object.keys(tokenBalances[token]).map( holder => {
       const holderInfo = tokenBalances[token][holder];
       if (holderInfo.poolShare.gt(0)){
-        csv.push([token, vaultData.token, holder, holderInfo.total.toFixed(8), holderInfo.poolShare.times(100).toFixed(8), BNify(totalOP).times(holderInfo.poolShare).toFixed(8)]);
+        csv.push([token, vaultData.token, holder, holderInfo.total.toFixed(8), holderInfo.poolShare.times(100).toFixed(8), BNify(vaultTotalRewards).times(holderInfo.poolShare).toFixed(8)]);
       }
     });
   }
