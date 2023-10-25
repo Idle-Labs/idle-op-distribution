@@ -47,20 +47,20 @@ const vaults = {
     token:'USDC',
     decimals: 18,
     abi: erc20ABI,
-    address:'0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482',
-    cdoAddress: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
-    cdoContract: new web3.eth.Contract(idleCDOAbi, '0x957572d61DD16662471c744837d4905bC04Bbaeb'),
-    trancheContract: new web3.eth.Contract(erc20ABI, '0xE422ca30eCC45Fc45e5ADD79E54505345F0cd482')
+    address:'0x8552801C75C4f2b1Cac088aF352193858B201D4E',
+    cdoAddress: '0x8771128e9E386DC8E4663118BB11EA3DE910e528',
+    cdoContract: new web3.eth.Contract(idleCDOAbi, '0x8771128e9E386DC8E4663118BB11EA3DE910e528'),
+    trancheContract: new web3.eth.Contract(erc20ABI, '0x8552801C75C4f2b1Cac088aF352193858B201D4E')
   },
   BB_clearpool_portofino_USDC:{
     type: 'BB',
     token:'USDC',
     decimals: 18,
     abi: erc20ABI,
-    address:'0x56A4283a4CE7202672A1518340732d5ffC511c0b',
-    cdoAddress: '0x957572d61DD16662471c744837d4905bC04Bbaeb',
-    cdoContract: new web3.eth.Contract(idleCDOAbi, '0x957572d61DD16662471c744837d4905bC04Bbaeb'),
-    trancheContract: new web3.eth.Contract(erc20ABI, '0x56A4283a4CE7202672A1518340732d5ffC511c0b')
+    address:'0xafbAeA12DE33bF6B44105Eceecec24B29163077c',
+    cdoAddress: '0x8771128e9E386DC8E4663118BB11EA3DE910e528',
+    cdoContract: new web3.eth.Contract(idleCDOAbi, '0x8771128e9E386DC8E4663118BB11EA3DE910e528'),
+    trancheContract: new web3.eth.Contract(erc20ABI, '0xafbAeA12DE33bF6B44105Eceecec24B29163077c')
   },
   AA_clearpool_fasanara_USDT:{
     type: 'AA',
@@ -118,22 +118,18 @@ async function getBlocksTimestamps(blocks){
   }, {})
 }
 
-function getVaultAprRatio(tvlAARatio) {
+const getVaultAprRatio = (tvlAARatio) => {
   const FULL_ALLOC = 100000
   const AA_RATIO_LIM_DOWN = 50000
-  const AA_RATIO_LIM_UP = 98000
-  let minSplit = 50000;
-  minSplit = minSplit === 0 ? AA_RATIO_LIM_DOWN : minSplit;
-
-  let aux;
+  const AA_RATIO_LIM_UP = 99000
+  
+  let aux = AA_RATIO_LIM_DOWN;
   if (tvlAARatio >= AA_RATIO_LIM_UP) {
       aux = AA_RATIO_LIM_UP;
-  } else if (tvlAARatio > minSplit) {
+  } else if (tvlAARatio > AA_RATIO_LIM_DOWN) {
       aux = tvlAARatio;
-  } else {
-      aux = minSplit;
   }
-  return  BNify((aux * tvlAARatio) / FULL_ALLOC / FULL_ALLOC);
+  return BNify((aux * tvlAARatio) / FULL_ALLOC / FULL_ALLOC);
 }
 
 async function getAAVaultRewardsRatio(vaultData, aaTrancheContract, bbTrancheContract, startBlock, endBlock){
@@ -175,15 +171,17 @@ async function getAAVaultRewardsRatio(vaultData, aaTrancheContract, bbTrancheCon
   if (Object.keys(vaultSplitRatios).length>0){
     let prevTimestamp = null;
     let prevSplitRatio = null;
+    let prevBlockNumber = null;
     const avgSplitRatioInfo = Object.keys(vaultSplitRatios).reduce( (avgSplitRatioInfo, splitRatioBlock) => {
       const blockTimestamp = BNify(blocksTimestamps[splitRatioBlock]);
       if (prevTimestamp){
         const splitRatioDuration = blockTimestamp.minus(prevTimestamp);
         avgSplitRatioInfo.num = avgSplitRatioInfo.num.plus(prevSplitRatio.times(splitRatioDuration));
         avgSplitRatioInfo.denom = avgSplitRatioInfo.denom.plus(splitRatioDuration)
-        // console.log(vaultData.cdoAddress, momentjs(parseInt(prevTimestamp)*1000).format('DD-MM-YYYY HH:mm'), momentjs(parseInt(blockTimestamp)*1000).format('DD-MM-YYYY HH:mm'), prevSplitRatio.toString())
+        // console.log(vaultData.cdoAddress, prevBlockNumber, splitRatioBlock, momentjs(parseInt(prevTimestamp)*1000).format('DD-MM-YYYY HH:mm'), momentjs(parseInt(blockTimestamp)*1000).format('DD-MM-YYYY HH:mm'), prevSplitRatio.toString())
       }
       prevTimestamp = blockTimestamp;
+      prevBlockNumber = splitRatioBlock
       prevSplitRatio = BNify(vaultSplitRatios[splitRatioBlock]);
       return avgSplitRatioInfo;
     }, {
@@ -194,6 +192,8 @@ async function getAAVaultRewardsRatio(vaultData, aaTrancheContract, bbTrancheCon
     avgSplitRatio = avgSplitRatioInfo.num.div(avgSplitRatioInfo.denom)
     // console.log('avgSplitRatio', avgSplitRatioInfo.num.toString(), avgSplitRatioInfo.denom.toString(), avgSplitRatio.toString());
   }
+
+  // console.log('avgSplitRatio', vaultData.cdoAddress, avgSplitRatio.toString(), getVaultAprRatio(parseInt(avgSplitRatio)).toString());
 
   return getVaultAprRatio(parseInt(avgSplitRatio));
 }
@@ -514,10 +514,12 @@ async function main(){
     ['Vault', 'Token', 'Address', 'Token Balance', 'Avg Share %', 'OP'].join(',')
   ];
 
+  const startBlock = 111317188; // Optimism
   const totalRewardsPerVault = BNify(3125);
-  const startBlock = 110910442; // Optimism
   // const startBlock = 18362962; // Mainnet (7 days ago)
   const endBlock = (await web3.eth.getBlock()).number // now
+
+  if (endBlock<startBlock) return;
 
   const promises = Object.keys(vaults).map( token => getTokenBalances(vaults[token], startBlock, endBlock).then( holders => ({[token]: holders}) ) )
   const results = await Promise.all(promises);
