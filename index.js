@@ -683,7 +683,7 @@ async function main(){
             const userRewards = usersRewards[holderAddr]
             const vaultSupply = Object.values(vaultSupplyBlocks).pop()
             const userShare = holderInfo.total.div(vaultSupply).times(100)
-            csv.push([`${cdoName}-${trancheType}`, holderAddr, holderInfo.total.toFixed(8), userShare.toFixed(2), userRewards.toFixed(8)]);
+            csv.push([`${cdoName}-${trancheType}`, holderAddr, holderInfo.total.toFixed(8), userShare.toFixed(6), userRewards.toFixed(8)]);
           }
         })
       })
