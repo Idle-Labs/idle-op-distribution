@@ -7,24 +7,18 @@ const idleCDOAbi = require('./idleCDO.json');
 
 require('dotenv').config()
 
-// const events = require('./events.js');
-// const vaultSupplies = require('./vaultSupplies.json');
-// const blocksTimestamps = require('./blocksTimestamps.json');
-
 const web3 = new Web3(new Web3.providers.HttpProvider(`https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`));
-// const web3 = new Web3(new Web3.providers.HttpProvider(`https://eth-mainnet.alchemyapi.io/v2/${process.env.ALCHEMY_MAINNET_KEY}`));
-// const web3 = new Web3(new Web3.providers.HttpProvider(`https://mainnet.infura.io/v3/${process.env.INFURA_MAINNET_KEY}`));
 const multiCall = new Multicall(web3);
-
-let endBlock = null;
-const debugLog = false;
-let blocksTimestamps = {}
-let vaultsSuppliesBlocks = {}
-const startBlock = 111317188; // Optimism
-const totalRewardsPerVault = BNify(3125);
 
 const totalDays = 7
 const totalTime = 86400*totalDays
+
+let endBlock = null
+let blocksTimestamps = {}
+let vaultsSuppliesBlocks = {}
+const startBlock = 111317188 // Optimism
+const totalRewardsPerVault = BNify(3125)
+
 
 const CDOs = {
   USDTPor: {
@@ -82,9 +76,6 @@ async function getVaultTotalSupplyBlocks(vaultData, blocks) {
   const results = await Promise.all(promises);
   return results.reduce( (suppliesBlocks, result) => {
     suppliesBlocks[result.blockNumber] = BNify(result.totalSupply).div(1e18)
-    if (debugLog){
-      console.log(`"${result.blockNumber}": ${BNify(result.totalSupply).div(1e18).toString()},`);
-    }
     return suppliesBlocks
   }, {})
 }
@@ -94,9 +85,6 @@ async function getVaultSplitRatioBlocks(cdoData, blocks) {
   const results = await Promise.all(promises);
   return results.reduce( (splitRatios, result) => {
     splitRatios[result.blockNumber] = BNify(result.trancheAPRSplitRatio)
-    if (debugLog){
-      console.log(`"${result.blockNumber}": ${BNify(result.trancheAPRSplitRatio).toString()},`);
-    }
     return splitRatios
   }, {})
 }
@@ -106,7 +94,6 @@ async function getBlocksTimestamps(blocks){
   const results = await Promise.all(promises);
   return results.reduce( (blocksTimestamps, result) => {
     blocksTimestamps[result.blockNumber] = parseInt(result.timestamp)
-    // console.log(`"${result.blockNumber}": ${result.timestamp},`);
     return blocksTimestamps;
   }, {})
 }
@@ -159,75 +146,7 @@ async function getVaultSplitRatios(cdoData){
   return await getVaultSplitRatioBlocks(cdoData, eventsBlocks.filter( blockNumber => BNify(blockNumber).gte(startBlock) && BNify(blockNumber).lte(endBlock) ))
 }
 
-async function getAAVaultRewardsRatio(vaultData, aaTrancheContract, bbTrancheContract, startBlock, endBlock) {
-  const aa_events = await aaTrancheContract.getPastEvents('Transfer', {
-    fromBlock: startBlock,
-    toBlock: endBlock
-  });
-
-  const bb_events = await bbTrancheContract.getPastEvents('Transfer', {
-    fromBlock: startBlock,
-    toBlock: endBlock
-  });
-
-  const eventsBlocks = [];
-  aa_events.forEach( event => {
-    if (eventsBlocks.indexOf(event.blockNumber) === -1){
-      eventsBlocks.push(event.blockNumber);
-    }
-  });
-  bb_events.forEach( event => {
-    if (eventsBlocks.indexOf(event.blockNumber) === -1){
-      eventsBlocks.push(event.blockNumber);
-    }
-  });
-
-  if (eventsBlocks.indexOf(startBlock) === -1){
-    eventsBlocks.push(startBlock)
-  }
-  if (eventsBlocks.indexOf(endBlock) === -1){
-    eventsBlocks.push(endBlock)
-  }
-
-  // Get vault split ratio only from startBlock to endBlock
-  const vaultSplitRatios = await getVaultSplitRatioBlocks(vaultData, eventsBlocks.filter( blockNumber => BNify(blockNumber).gte(startBlock) && BNify(blockNumber).lte(endBlock) ))
-
-  // console.log('vaultSplitRatios', vaultData.cdoAddress, eventsBlocks, vaultSplitRatios)
-
-  let avgSplitRatio = BNify(0)
-  if (Object.keys(vaultSplitRatios).length>0){
-    let prevTimestamp = null;
-    let prevSplitRatio = null;
-    let prevBlockNumber = null;
-    const avgSplitRatioInfo = Object.keys(vaultSplitRatios).reduce( (avgSplitRatioInfo, splitRatioBlock) => {
-      const blockTimestamp = BNify(blocksTimestamps[splitRatioBlock]);
-      if (prevTimestamp){
-        const splitRatioDuration = blockTimestamp.minus(prevTimestamp);
-        avgSplitRatioInfo.num = avgSplitRatioInfo.num.plus(prevSplitRatio.times(splitRatioDuration));
-        avgSplitRatioInfo.denom = avgSplitRatioInfo.denom.plus(splitRatioDuration)
-        // console.log(vaultData.cdoAddress, prevBlockNumber, splitRatioBlock, momentjs(parseInt(prevTimestamp)*1000).format('DD-MM-YYYY HH:mm'), momentjs(parseInt(blockTimestamp)*1000).format('DD-MM-YYYY HH:mm'), prevSplitRatio.toString())
-      }
-      prevTimestamp = blockTimestamp;
-      prevBlockNumber = splitRatioBlock
-      prevSplitRatio = BNify(vaultSplitRatios[splitRatioBlock]);
-      return avgSplitRatioInfo;
-    }, {
-      num: BNify(0),
-      denom: BNify(0)
-    })
-
-    avgSplitRatio = avgSplitRatioInfo.num.div(avgSplitRatioInfo.denom)
-    // console.log('avgSplitRatio', avgSplitRatioInfo.num.toString(), avgSplitRatioInfo.denom.toString(), avgSplitRatio.toString());
-  }
-
-  // console.log('avgSplitRatio', vaultData.cdoAddress, avgSplitRatio.toString(), getVaultAprRatio(parseInt(avgSplitRatio)).toString());
-
-  return getVaultAprRatio(parseInt(avgSplitRatio));
-}
-
 async function getTokenBalances(cdoName, cdoData, vaultData) {
-  // const tokenContract = new web3.eth.Contract(vaultData.abi, vaultData.address);
-  
   const events = await vaultData.trancheContract.getPastEvents('Transfer', {
     fromBlock: 0,
     toBlock: endBlock
@@ -239,11 +158,6 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
     }
   });
   eventsBlocks.push(endBlock);
-
-  // events.forEach(event => {
-  //   console.log(event);
-  // });
-  // return {};
 
   // Get vault prices at specific blocks
   const [
@@ -345,10 +259,6 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
             holdersMap[from].poolShare = holdersMap[from].poolShare.plus(poolShare.times(holdingPeriod));
             holdersMap[from].holdingPeriod = holdersMap[from].holdingPeriod.plus(holdingPeriod);
           }
-          
-          if (debugLog){
-            console.log('FROM', from, parseInt(holdersMap[from].blockNumber), supplyBlockNumber, parseInt(blockNumber), momentjs(parseInt(holdersMap[from].blocks[supplyBlockNumber].startTime)*1000).format('DD-MM-YYYY HH:mm'), momentjs(parseInt(holdersMap[from].blocks[supplyBlockNumber].endTime)*1000).format('DD-MM-YYYY HH:mm'), holdingPeriod.toString(), holdersMap[from].total.toString(), prevSupply.toString(), poolShare.toString(), holdersMap[from].holdingPeriod.toString());
-          }
 
           // Update endTimestamp
           holdersMap[from].endTimestamp = blockTimestamp;
@@ -434,10 +344,6 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
             holdersMap[to].poolShare = holdersMap[to].poolShare.plus(poolShare.times(holdingPeriod));
             holdersMap[to].holdingPeriod = holdersMap[to].holdingPeriod.plus(holdingPeriod);
           }
-          
-          if (debugLog){
-            console.log('TO', to, parseInt(holdersMap[to].blockNumber), supplyBlockNumber, parseInt(blockNumber), momentjs(parseInt(holdersMap[to].blocks[supplyBlockNumber].startTime)*1000).format('DD-MM-YYYY HH:mm'), momentjs(parseInt(holdersMap[to].blocks[supplyBlockNumber].endTime)*1000).format('DD-MM-YYYY HH:mm'), holdingPeriod.toString(), holdersMap[to].total.toString(), prevSupply.toString(), poolShare.toString(), holdersMap[to].holdingPeriod.toString());
-          }
 
           // Update endTimestamp
           holdersMap[to].endTimestamp = blockTimestamp;
@@ -508,10 +414,6 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
           holdersMap[address].holdingPeriod = holdersMap[address].holdingPeriod.plus(holdingPeriod);
         }
 
-        if (debugLog){
-          console.log('FIN', address, parseInt(holdersMap[address].blockNumber), supplyBlockNumber, parseInt(endBlock), momentjs(parseInt(holdersMap[address].blocks[supplyBlockNumber].startTime)*1000).format('DD-MM-YYYY HH:mm'), momentjs(parseInt(holdersMap[address].blocks[supplyBlockNumber].endTime)*1000).format('DD-MM-YYYY HH:mm'), holdingPeriod.toString(), holdersMap[address].total.toString(), prevSupply.toString(), poolShare.toString(), holdersMap[address].holdingPeriod.toString());
-        }
-
         // Update endTimestamp
         holdersMap[address].endTimestamp = blockTimestamp;
         prevSupply = blockTotalSupply;
@@ -522,18 +424,11 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
     if (holdersMap[address].poolShare.gt(0)){
       const initialPoolShare = holdersMap[address].poolShare.div(holdersMap[address].holdingPeriod);
       holdersMap[address].poolShare = holdersMap[address].poolShare.div(totalPeriod);
-      if (debugLog){
-        console.log("TOTAL", address, holdersMap[address].holdingPeriod.toString(), BNify(totalPeriod).toString(), initialPoolShare.times(100).toFixed(8)+"%", "=>", holdersMap[address].poolShare.times(100).toFixed(8)+"%");
-      }
       superTotal = superTotal.plus(holdersMap[address].poolShare.times(100));
     }
 
     return holders
   }, {});
-
-  if (debugLog){
-    console.log('GRANDTOTAL', superTotal.toString());
-  }
 
   return holdersMap;
 }
@@ -594,10 +489,6 @@ async function getVaultsRewardsBlocks(vaultsSplitRatiosBlocks){
 
 async function main(){
 
-  const csv = [
-    ['Vault', 'Holder', 'Token Balance', 'Share %', 'OP'].join(',')
-  ];
-
   endBlock = parseInt((await web3.eth.getBlock()).number) // now
 
   if (endBlock<startBlock) return;
@@ -631,7 +522,12 @@ async function main(){
 
   const balances = await Promise.all(balancesPromises);
 
+  // const csv_detailed = [
+  //   ['Vault', 'Holder', 'Token Balance', 'Share %', 'OP'].join(',')
+  // ];
+
   // Assign rewards to users
+  const usersRewards = {}
   balances.forEach( res => {
     Object.keys(res).forEach( cdoName => {
 
@@ -640,7 +536,7 @@ async function main(){
 
         let prevBlock = null
         let prevSupply = null
-        const usersRewards = {}
+        const vaultUsersRewards = {}
         const vaultSupplyBlocks = vaultsSuppliesBlocks[cdoName][trancheType]
 
         Object.keys(vaultsRewardsBlocks[cdoName]).forEach( blockNumber => {
@@ -665,9 +561,13 @@ async function main(){
               totalPoolShare = totalPoolShare.plus(userPoolShare)
               totalRewardsDistributed = totalRewardsDistributed.plus(userRewards)
 
+              if (!vaultUsersRewards[holderAddr]){
+                vaultUsersRewards[holderAddr] = BNify(0)
+              }
               if (!usersRewards[holderAddr]){
                 usersRewards[holderAddr] = BNify(0)
               }
+              vaultUsersRewards[holderAddr] = vaultUsersRewards[holderAddr].plus(userRewards)
               usersRewards[holderAddr] = usersRewards[holderAddr].plus(userRewards)
             }
             return userBalances
@@ -677,20 +577,34 @@ async function main(){
           prevSupply = vaultSupply
         })
 
-        Object.keys(usersRewards).forEach( holderAddr => {
+        /*
+        Object.keys(vaultUsersRewards).forEach( holderAddr => {
           const holderInfo = trancheHolders[holderAddr]
           if (holderInfo){
-            const userRewards = usersRewards[holderAddr]
+            const userRewards = vaultUsersRewards[holderAddr]
             const vaultSupply = Object.values(vaultSupplyBlocks).pop()
             const userShare = holderInfo.total.div(vaultSupply).times(100)
-            csv.push([`${cdoName}-${trancheType}`, holderAddr, holderInfo.total.toFixed(8), userShare.toFixed(6), userRewards.toFixed(8)]);
+            csv_detailed.push([`${cdoName}-${trancheType}`, holderAddr, holderInfo.total.toFixed(8), userShare.toFixed(6), userRewards.toFixed(8)]);
           }
         })
+        */
       })
     })
   })
 
-  console.log(csv.join("\n"));
+  const csv_groupped = [
+    ['Holder', 'OP'].join(',')
+  ];
+
+  const sortedUsersRewards = Object.fromEntries(
+    Object.entries(usersRewards).sort(([,a],[,b]) => b-a)
+  )
+
+  Object.keys(sortedUsersRewards).forEach( holderAddr => {
+    csv_groupped.push([holderAddr, sortedUsersRewards[holderAddr].toFixed(8)]);
+  })
+
+  console.log(csv_groupped.join("\n"));
 }
 
 main();
