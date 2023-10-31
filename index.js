@@ -225,7 +225,7 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
       if (holdersMap[from].total.gt(0)){
         let prevSupply = null;
         let prevSupplyBlockNumber = null;
-        Object.keys(vaultSupplies).filter( supplyBlockNumber => BNify(supplyBlockNumber).gte(holdersMap[from].blockNumber) && BNify(supplyBlockNumber).lte(blockNumber) ).forEach( supplyBlockNumber => {
+        Object.keys(vaultSupplies).filter( supplyBlockNumber => BNify(supplyBlockNumber).gte(holdersMap[from].blockNumber) && BNify(supplyBlockNumber).lt(blockNumber) ).forEach( supplyBlockNumber => {
           const blockTotalSupply = BNify(vaultSupplies[supplyBlockNumber]);
           const blockTimestamp = blocksTimestamps[supplyBlockNumber];
 
@@ -269,6 +269,11 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
 
       const newBalance = BNify.maximum(0, holdersMap[from].total.minus(BNify(event.returnValues.value).div('1e18')));
       holdersMap[from].total = newBalance;
+
+      holdersMap[from].blocks[blockNumber] = {
+        balance: holdersMap[from].total
+      }
+
       holdersMap[from].blockNumber = blockNumber;
       if (!holdersMap[from].startTimestamp) {
         holdersMap[from].startTimestamp = blocksTimestamps[blockNumber];
@@ -300,7 +305,7 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
       if (holdersMap[to].total.gt(0)){
         let prevSupply = null;
         let prevSupplyBlockNumber = null;
-        Object.keys(vaultSupplies).filter( supplyBlockNumber => BNify(supplyBlockNumber).gte(holdersMap[to].blockNumber) && BNify(supplyBlockNumber).lte(blockNumber) ).forEach( supplyBlockNumber => {
+        Object.keys(vaultSupplies).filter( supplyBlockNumber => BNify(supplyBlockNumber).gte(holdersMap[to].blockNumber) && BNify(supplyBlockNumber).lt(blockNumber) ).forEach( supplyBlockNumber => {
           const blockTotalSupply = BNify(supplyBlockNumber).eq(blockNumber) ? BNify(vaultSupplies[prevSupplyBlockNumber]) : BNify(vaultSupplies[supplyBlockNumber]);
           const blockTimestamp = blocksTimestamps[supplyBlockNumber];
 
@@ -355,6 +360,11 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
       const newBalance = holdersMap[to].total.plus(BNify(event.returnValues.value).div(1e18))
       // holdersMap[to][blockNumber].balance = newBalance.toString()
       holdersMap[to].total = newBalance
+
+      holdersMap[to].blocks[blockNumber] = {
+        balance: holdersMap[to].total
+      }
+
       holdersMap[to].blockNumber = blockNumber
       if (!holdersMap[to].startTimestamp) {
         holdersMap[to].startTimestamp = blocksTimestamps[blockNumber];
@@ -528,6 +538,8 @@ async function main(){
 
   const balances = await Promise.all(balancesPromises);
 
+  // console.log('balances', balances)
+
   // const csv_detailed = [
   //   ['Vault', 'Holder', 'Token Balance', 'Share %', 'OP'].join(',')
   // ];
@@ -539,6 +551,12 @@ async function main(){
 
       Object.keys(res[cdoName]).forEach( trancheType => {
         const trancheHolders = res[cdoName][trancheType]
+
+        // if (trancheHolders['0xfc61049029239f9e71bbd948df5bb287aa2fa956']){
+        //   Object.keys(trancheHolders['0xfc61049029239f9e71bbd948df5bb287aa2fa956'].blocks).forEach( holderBlock => {
+        //     console.log(cdoName, trancheType, holderBlock, trancheHolders['0xfc61049029239f9e71bbd948df5bb287aa2fa956'].blocks[holderBlock].balance.toFixed(6));
+        //   })
+        // }
 
         let prevBlock = null
         let prevSupply = null
@@ -575,6 +593,10 @@ async function main(){
               }
               vaultUsersRewards[holderAddr] = vaultUsersRewards[holderAddr].plus(userRewards)
               usersRewards[holderAddr] = usersRewards[holderAddr].plus(userRewards)
+
+              // if (holderAddr === '0xfc61049029239f9e71bbd948df5bb287aa2fa956'){
+              //   console.log(cdoName, trancheType, holderAddr, blockNumber, userBalances[holderAddr].toFixed(6), usersRewards[holderAddr].toFixed(6));
+              // }
             }
             return userBalances
           }, {})
@@ -606,9 +628,14 @@ async function main(){
     Object.entries(usersRewards).sort(([,a],[,b]) => b-a)
   )
 
+  let totalRewardsDistributed = BNify(0)
+
   Object.keys(sortedUsersRewards).forEach( holderAddr => {
+    totalRewardsDistributed = totalRewardsDistributed.plus(sortedUsersRewards[holderAddr])
     csv_groupped.push([holderAddr, sortedUsersRewards[holderAddr].toFixed(8)]);
   })
+
+  // console.log('totalRewardsDistributed', totalRewardsDistributed.toFixed(6))
 
   console.log(csv_groupped.join("\n"));
 }
