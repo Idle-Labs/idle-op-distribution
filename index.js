@@ -433,7 +433,7 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
   return holdersMap;
 }
 
-function getRemainingRewardsPerPool(blockNumber, timeSpan){
+function getRewardsByTimestamp(blockNumber, timeSpan){
   return totalRewardsPerVault.times(timeSpan).div(totalTime)
 }
 
@@ -466,16 +466,22 @@ async function getVaultsRewardsBlocks(vaultsSplitRatiosBlocks){
       const timeSpan = blockTimestamp-prevTimestamp
       if (timeSpan>0){
         const vaultSplitRatio = vaultsSplitRatiosBlocks[cdoName][blockNumber].div(100000)
-        const remainingRewards = getRemainingRewardsPerPool(blockNumber, timeSpan)
+        let rewardsToDistribute = getRewardsByTimestamp(blockNumber, timeSpan)
+
+        // Check if I've distributed more rewards than total
+        if (totalDistributedRewards.plus(rewardsToDistribute).gt(totalRewardsPerVault)){
+          rewardsToDistribute = totalRewardsPerVault.minus(totalDistributedRewards)
+        }
+
         vaultRewardsBlock[blockNumber] = {
-          AA: remainingRewards.times(vaultSplitRatio),
-          BB: remainingRewards.times(BNify(1).minus(vaultSplitRatio))
+          AA: rewardsToDistribute.times(vaultSplitRatio),
+          BB: rewardsToDistribute.times(BNify(1).minus(vaultSplitRatio))
         }
 
         totalDistributedRewardsAA = totalDistributedRewardsAA.plus(vaultRewardsBlock[blockNumber].AA)
         totalDistributedRewardsBB = totalDistributedRewardsBB.plus(vaultRewardsBlock[blockNumber].BB)
-        totalDistributedRewards = totalDistributedRewards.plus(remainingRewards)
-        // console.log(cdoName, startBlock, prevBlockNumber, blockNumber, endBlock, blockTimestamp, momentjs(blockTimestamp*1000).format('DD-MM-YYYY HH:mm'), timeSpan, remainingRewards.toFixed(6), vaultSplitRatio.toFixed(6), vaultRewardsBlock[blockNumber].AA.toFixed(6), vaultRewardsBlock[blockNumber].BB.toFixed(6), totalDistributedRewardsAA.toFixed(6), totalDistributedRewardsBB.toFixed(6), totalDistributedRewards.toFixed(6))
+        totalDistributedRewards = totalDistributedRewards.plus(rewardsToDistribute)
+        // console.log(cdoName, startBlock, prevBlockNumber, blockNumber, endBlock, blockTimestamp, momentjs(blockTimestamp*1000).format('DD-MM-YYYY HH:mm'), timeSpan, rewardsToDistribute.toFixed(6), vaultSplitRatio.toFixed(6), vaultRewardsBlock[blockNumber].AA.toFixed(6), vaultRewardsBlock[blockNumber].BB.toFixed(6), totalDistributedRewardsAA.toFixed(6), totalDistributedRewardsBB.toFixed(6), totalDistributedRewards.toFixed(6))
         prevTimestamp = blockTimestamp
         prevBlockNumber = blockNumber
       }
