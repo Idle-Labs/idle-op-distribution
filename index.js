@@ -21,15 +21,17 @@ let vaultsSuppliesBlocks = {}
 // const startBlock = 111626001 // Second batch
 // let endBlock = 111928437 // Second batch
 
-const startBlock = 111928437
+// const startBlock = 111928437
 let endBlock = null
 
 const IS_BATCH_COMPLETED = false; // Set = true to override totalTime with endTime-startTime
 
-const totalRewardsPerVault = BNify(3125)
-
 const CDOs = {
   USDTPor: {
+    rewards: {
+      total: BNify(3125),
+      startBlock: 111928437
+    },
     CDO:{
       address: '0x8771128e9E386DC8E4663118BB11EA3DE910e528',
       contract: new web3.eth.Contract(idleCDOAbi, '0x8771128e9E386DC8E4663118BB11EA3DE910e528'),
@@ -54,6 +56,10 @@ const CDOs = {
     },
   },
   USDTFas: {
+    rewards: {
+      total: BNify(3125),
+      startBlock: 111928437
+    },
     CDO:{
       address: '0x94e399Af25b676e7783fDcd62854221e67566b7f',
       contract: new web3.eth.Contract(idleCDOAbi, '0x94e399Af25b676e7783fDcd62854221e67566b7f'),
@@ -75,6 +81,34 @@ const CDOs = {
       name: 'BB_clearpool_fasanara_USDT',
       address:'0x7038D2A5323064f7e590EADc0E8833F2613F6317',
       trancheContract: new web3.eth.Contract(erc20ABI, '0x7038D2A5323064f7e590EADc0E8833F2613F6317')
+    },
+  },
+  USDTWin: {
+    rewards: {
+      total: BNify(428.571429),
+      startBlock: 112007115
+    },
+    CDO:{
+      address: '0xa26b308B2386DBd906Cf1F8a653ca7d758f301B3',
+      contract: new web3.eth.Contract(idleCDOAbi, '0xa26b308B2386DBd906Cf1F8a653ca7d758f301B3'),
+    },  
+    AA:{
+      type: 'AA',
+      token:'USDC',
+      decimals: 18,
+      abi: erc20ABI,
+      name: 'AA_clearpool_wincent_USDC',
+      address:'0xb00BbFD1bD0ee3EefF953FA02cdBe4A55BaaC55f',
+      trancheContract: new web3.eth.Contract(erc20ABI, '0xb00BbFD1bD0ee3EefF953FA02cdBe4A55BaaC55f')
+    },
+    BB:{
+      type: 'BB',
+      token:'USDC',
+      decimals: 18,
+      abi: erc20ABI,
+      name: 'BB_clearpool_wincent_USDC',
+      address:'0x0BD3cC920926472606bAe4CE479430df18E99F75',
+      trancheContract: new web3.eth.Contract(erc20ABI, '0x0BD3cC920926472606bAe4CE479430df18E99F75')
     },
   }
 }
@@ -121,6 +155,9 @@ const getVaultAprRatio = (tvlAARatio) => {
 }
 
 async function getVaultSplitRatios(cdoData){
+
+  const startBlock = cdoData.rewards.startBlock
+
   const aa_events = await cdoData.AA.trancheContract.getPastEvents('Transfer', {
     fromBlock: startBlock,
     toBlock: endBlock
@@ -155,6 +192,9 @@ async function getVaultSplitRatios(cdoData){
 }
 
 async function getTokenBalances(cdoName, cdoData, vaultData) {
+
+  const startBlock = cdoData.rewards.startBlock
+
   const events = await vaultData.trancheContract.getPastEvents('Transfer', {
     fromBlock: 0,
     toBlock: endBlock
@@ -451,8 +491,8 @@ async function getTokenBalances(cdoName, cdoData, vaultData) {
   return holdersMap;
 }
 
-function getRewardsByTimestamp(blockNumber, timeSpan){
-  return totalRewardsPerVault.times(timeSpan).div(totalTime)
+function getRewardsByTimestamp(totalRewards, totalTime, timeSpan){
+  return totalRewards.times(timeSpan).div(totalTime)
 }
 
 async function getVaultsRewardsBlocks(vaultsSplitRatiosBlocks){
@@ -464,23 +504,35 @@ async function getVaultsRewardsBlocks(vaultsSplitRatiosBlocks){
     ]
   }, [])
 
-  if (allBlocks.indexOf(startBlock) === -1){
-    allBlocks.push(startBlock)
-  }
+  // Add start blocks
+  Object.keys(CDOs).forEach( cdoName => {
+    const cdoData = CDOs[cdoName]
+    const startBlock = cdoData.rewards.startBlock
+
+    if (allBlocks.indexOf(startBlock) === -1){
+      allBlocks.push(startBlock)
+    }
+  })
+
   if (allBlocks.indexOf(endBlock) === -1){
     allBlocks.push(endBlock)
   }
 
   blocksTimestamps = await getBlocksTimestamps(allBlocks.sort())
 
-  // Set totalTime
-  if (IS_BATCH_COMPLETED){
-    totalTime = blocksTimestamps[endBlock] - blocksTimestamps[startBlock]
-  }
-
   // console.log('totalTime', blocksTimestamps[startBlock], blocksTimestamps[endBlock], totalTime)
 
   const vaultsRewardsBlocks = Object.keys(vaultsSplitRatiosBlocks).reduce( (vaultsRewardsBlocks, cdoName) => {
+
+    const cdoData = CDOs[cdoName]
+    const startBlock = cdoData.rewards.startBlock
+    const vaultTotalRewards = cdoData.rewards.total
+
+    // Set totalTime
+    if (IS_BATCH_COMPLETED){
+      totalTime = blocksTimestamps[endBlock] - blocksTimestamps[startBlock]
+    }
+
     let prevBlockNumber = startBlock
     let prevTimestamp = blocksTimestamps[prevBlockNumber]
     let totalDistributedRewards = BNify(0)
@@ -491,11 +543,11 @@ async function getVaultsRewardsBlocks(vaultsSplitRatiosBlocks){
       const timeSpan = blockTimestamp-prevTimestamp
       if (timeSpan>0){
         const vaultSplitRatio = vaultsSplitRatiosBlocks[cdoName][blockNumber].div(100000)
-        let rewardsToDistribute = getRewardsByTimestamp(blockNumber, timeSpan)
+        let rewardsToDistribute = getRewardsByTimestamp(vaultTotalRewards, totalTime, timeSpan)
 
         // Check if I've distributed more rewards than total
-        if (totalDistributedRewards.plus(rewardsToDistribute).gt(totalRewardsPerVault)){
-          rewardsToDistribute = totalRewardsPerVault.minus(totalDistributedRewards)
+        if (totalDistributedRewards.plus(rewardsToDistribute).gt(vaultTotalRewards)){
+          rewardsToDistribute = vaultTotalRewards.minus(totalDistributedRewards)
         }
 
         vaultRewardsBlock[blockNumber] = {
@@ -557,9 +609,9 @@ async function main(){
 
   // console.log('balances', balances)
 
-  // const csv_detailed = [
-  //   ['Vault', 'Holder', 'Token Balance', 'Share %', 'OP'].join(',')
-  // ];
+  const csv_detailed = [
+    ['Vault', 'Holder', 'Token Balance', 'Share %', 'OP'].join(',')
+  ];
 
   // Assign rewards to users
   const usersRewards = {}
@@ -622,7 +674,6 @@ async function main(){
           prevSupply = vaultSupply
         })
 
-        /*
         Object.keys(vaultUsersRewards).forEach( holderAddr => {
           const holderInfo = trancheHolders[holderAddr]
           if (holderInfo){
@@ -632,7 +683,6 @@ async function main(){
             csv_detailed.push([`${cdoName}-${trancheType}`, holderAddr, holderInfo.total.toFixed(8), userShare.toFixed(6), userRewards.toFixed(8)]);
           }
         })
-        */
       })
     })
   })
@@ -655,6 +705,7 @@ async function main(){
   // console.log('totalRewardsDistributed', totalRewardsDistributed.toFixed(6))
 
   console.log(csv_groupped.join("\n"));
+  // console.log(csv_detailed.join("\n"));
 }
 
 main();
