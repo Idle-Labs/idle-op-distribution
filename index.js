@@ -10,15 +10,23 @@ require('dotenv').config()
 const web3 = new Web3(new Web3.providers.HttpProvider(`https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_OPTIMISM_KEY}`));
 const multiCall = new Multicall(web3);
 
-const totalDays = 7
-const totalTime = 86400*totalDays
+let totalDays = 7
+let totalTime = 86400*totalDays
 
-let endBlock = null
 let blocksTimestamps = {}
 let vaultsSuppliesBlocks = {}
-const startBlock = 111317188 // Optimism
-const totalRewardsPerVault = BNify(3125)
+// const startBlock = 111323640 // First batch
+// let endBlock = 111626000 // First batch
 
+// const startBlock = 111626001 // Second batch
+// let endBlock = 111928437 // Second batch
+
+const startBlock = 111928437
+let endBlock = null
+
+const IS_BATCH_COMPLETED = false; // Set = true to override totalTime with endTime-startTime
+
+const totalRewardsPerVault = BNify(3125)
 
 const CDOs = {
   USDTPor: {
@@ -465,6 +473,13 @@ async function getVaultsRewardsBlocks(vaultsSplitRatiosBlocks){
 
   blocksTimestamps = await getBlocksTimestamps(allBlocks.sort())
 
+  // Set totalTime
+  if (IS_BATCH_COMPLETED){
+    totalTime = blocksTimestamps[endBlock] - blocksTimestamps[startBlock]
+  }
+
+  // console.log('totalTime', blocksTimestamps[startBlock], blocksTimestamps[endBlock], totalTime)
+
   const vaultsRewardsBlocks = Object.keys(vaultsSplitRatiosBlocks).reduce( (vaultsRewardsBlocks, cdoName) => {
     let prevBlockNumber = startBlock
     let prevTimestamp = blocksTimestamps[prevBlockNumber]
@@ -505,9 +520,11 @@ async function getVaultsRewardsBlocks(vaultsSplitRatiosBlocks){
 
 async function main(){
 
-  endBlock = parseInt((await web3.eth.getBlock()).number) // now
-
-  if (endBlock<startBlock) return;
+  if (!endBlock){
+    const lastBlock = await web3.eth.getBlock('latest');
+    endBlock = parseInt(lastBlock.number) // now
+  }
+  // if (endBlock<startBlock) return;
 
   // Get splitRatios
   const splitRatiosPromises = Object.keys(CDOs).map( cdoName => {
@@ -595,7 +612,7 @@ async function main(){
               usersRewards[holderAddr] = usersRewards[holderAddr].plus(userRewards)
 
               // if (holderAddr === '0xfc61049029239f9e71bbd948df5bb287aa2fa956'){
-              //   console.log(cdoName, trancheType, holderAddr, blockNumber, userBalances[holderAddr].toFixed(6), usersRewards[holderAddr].toFixed(6));
+                // console.log(cdoName, trancheType, holderAddr, blockNumber, userBalances[holderAddr].toFixed(6), userPoolShare.toFixed(6), usersRewards[holderAddr].toFixed(6));
               // }
             }
             return userBalances
