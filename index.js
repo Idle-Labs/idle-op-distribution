@@ -15,22 +15,51 @@ let totalTime = 86400*totalDays
 
 let blocksTimestamps = {}
 let vaultsSuppliesBlocks = {}
-// const startBlock = 111323640 // First batch
-// let endBlock = 111626000 // First batch
 
-// const startBlock = 111626001 // Second batch
-// let endBlock = 111928437 // Second batch
-
-// const startBlock = 111928437
 let endBlock = null
 
+// const startBlock = 111323640 // First batch
+// endBlock = 111626000 // First batch
+
+// const startBlock = 111626001 // Second batch
+// endBlock = 111928437 // Second batch
+
+// Third batch
+// const startBlock = 111928437
+// endBlock = 112230812
+
+// Fourth batch
+// const startBlock = 112230813
+// endBlock = 112533212
+
+// Fifth batch
+// const startBlock = 112533213
+// endBlock = 112835612
+
+// Sixth batch
+// const startBlock = 112835613
+// endBlock = 113138012
+
+// Seventh batch
+// const startBlock = 113138013
+// endBlock = 113440412
+
+// Eighth batch (TO BE DISTRIBUTED)
+// const startBlock = 113440413
+// endBlock = 113742812
+
+// Nineth batch
+const startBlock = 113742813
+endBlock = null
+
+// let endBlock = null
 const IS_BATCH_COMPLETED = false; // Set = true to override totalTime with endTime-startTime
 
 const CDOs = {
   USDTPor: {
     rewards: {
-      total: BNify(3125),
-      startBlock: 111928437
+      total: BNify(1200),
+      startBlock: 113742813
     },
     CDO:{
       address: '0x8771128e9E386DC8E4663118BB11EA3DE910e528',
@@ -57,8 +86,8 @@ const CDOs = {
   },
   USDTFas: {
     rewards: {
-      total: BNify(3125),
-      startBlock: 111928437
+      total: BNify(3900),
+      startBlock: 113742813
     },
     CDO:{
       address: '0x94e399Af25b676e7783fDcd62854221e67566b7f',
@@ -85,12 +114,12 @@ const CDOs = {
   },
   USDTWin: {
     rewards: {
-      total: BNify(428.571429),
-      startBlock: 112007115
+      total: BNify(1400),
+      startBlock: 113742813
     },
     CDO:{
-      address: '0xa26b308B2386DBd906Cf1F8a653ca7d758f301B3',
-      contract: new web3.eth.Contract(idleCDOAbi, '0xa26b308B2386DBd906Cf1F8a653ca7d758f301B3'),
+      address: '0xe49174F0935F088509cca50e54024F6f8a6E08Dd',
+      contract: new web3.eth.Contract(idleCDOAbi, '0xe49174F0935F088509cca50e54024F6f8a6E08Dd'),
     },  
     AA:{
       type: 'AA',
@@ -98,8 +127,8 @@ const CDOs = {
       decimals: 18,
       abi: erc20ABI,
       name: 'AA_clearpool_wincent_USDC',
-      address:'0xb00BbFD1bD0ee3EefF953FA02cdBe4A55BaaC55f',
-      trancheContract: new web3.eth.Contract(erc20ABI, '0xb00BbFD1bD0ee3EefF953FA02cdBe4A55BaaC55f')
+      address:'0x6AB470a650E1E0E68b8D1C0f154E78ca1a7147BF',
+      trancheContract: new web3.eth.Contract(erc20ABI, '0x6AB470a650E1E0E68b8D1C0f154E78ca1a7147BF')
     },
     BB:{
       type: 'BB',
@@ -107,8 +136,8 @@ const CDOs = {
       decimals: 18,
       abi: erc20ABI,
       name: 'BB_clearpool_wincent_USDC',
-      address:'0x0BD3cC920926472606bAe4CE479430df18E99F75',
-      trancheContract: new web3.eth.Contract(erc20ABI, '0x0BD3cC920926472606bAe4CE479430df18E99F75')
+      address:'0xB1aD1E9309e5f10982d9bf480bC241580ccc4b02',
+      trancheContract: new web3.eth.Contract(erc20ABI, '0xB1aD1E9309e5f10982d9bf480bC241580ccc4b02')
     },
   }
 }
@@ -663,8 +692,8 @@ async function main(){
               vaultUsersRewards[holderAddr] = vaultUsersRewards[holderAddr].plus(userRewards)
               usersRewards[holderAddr] = usersRewards[holderAddr].plus(userRewards)
 
-              // if (holderAddr === '0xfc61049029239f9e71bbd948df5bb287aa2fa956'){
-                // console.log(cdoName, trancheType, holderAddr, blockNumber, userBalances[holderAddr].toFixed(6), userPoolShare.toFixed(6), usersRewards[holderAddr].toFixed(6));
+              // if (holderAddr === '0xdc27620f4e2e3728c2a3d209f748f82eb1e99031'){
+              //   console.log(cdoName, trancheType, holderAddr, blockNumber, userBalances[holderAddr].toFixed(6), userPoolShare.toFixed(6), usersRewards[holderAddr].toFixed(6));
               // }
             }
             return userBalances
@@ -698,11 +727,13 @@ async function main(){
   let totalRewardsDistributed = BNify(0)
 
   Object.keys(sortedUsersRewards).forEach( holderAddr => {
-    totalRewardsDistributed = totalRewardsDistributed.plus(sortedUsersRewards[holderAddr])
-    csv_groupped.push([holderAddr, sortedUsersRewards[holderAddr].toFixed(8)]);
+    if (BNify(sortedUsersRewards[holderAddr].toFixed(8)).gt(0)){
+      totalRewardsDistributed = totalRewardsDistributed.plus(sortedUsersRewards[holderAddr])
+      csv_groupped.push([holderAddr, sortedUsersRewards[holderAddr].toFixed(8)]);
+    }
   })
 
-  // console.log('totalRewardsDistributed', totalRewardsDistributed.toFixed(6))
+  // console.log('totalRewardsDistributed', totalRewardsDistributed.toString())
 
   console.log(csv_groupped.join("\n"));
   // console.log(csv_detailed.join("\n"));
